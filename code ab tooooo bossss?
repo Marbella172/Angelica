@@ -1,0 +1,88 @@
+import sys
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QLineEdit
+from PySide6.QtCore import Qt
+from database import Database
+from login_ui import Ui_Form  
+
+class LoginWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.ui = Ui_Form()
+        self.ui.setupUi(self)
+        self.db = Database()
+        self.setWindowTitle("Login - Welcome Back")
+        
+        self.ui.pushButton.clicked.connect(self.handle_login)   
+        self.ui.label_7.mousePressEvent = self.go_to_register  
+        self.ui.label_6.mousePressEvent = self.forgot_password  
+        self.ui.lineEdit_2.setEchoMode(QLineEdit.Password) 
+        self.ui.lineEdit.returnPressed.connect(self.handle_login) 
+        self.ui.lineEdit_2.returnPressed.connect(self.handle_login)   
+    
+    def handle_login(self):
+        
+        username = self.ui.lineEdit.text().strip()              
+        password = self.ui.lineEdit_2.text()
+
+        
+        if not username or not password:
+            QMessageBox.warning(self, "Warning", "Please enter both username and password!")
+            return
+        
+        
+        try:
+            user = self.db.verify_user(username, password)
+            if user:
+                
+                QMessageBox.information(self, "Success", f"Welcome back, {username}!")
+                self.open_main_window(username)
+            else:
+               
+                QMessageBox.critical(self, "Error", "Invalid username or password!")
+                self.ui.lineEdit_2.clear()  
+                self.ui.lineEdit_2.setFocus()  
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Connection error: {str(e)}")
+    
+    def go_to_register(self, event):
+        """Navigate to registration window"""
+        try:
+            from register_window import RegisterWindow
+            self.register_window = RegisterWindow()
+            self.register_window.show()
+            self.close()  
+        except ImportError:
+            QMessageBox.critical(self, "Error", "Registration window not found!")
+    
+    def open_main_window(self, username):
+        """Open the main application window after login"""
+        try:
+            from main_window import MainWindow
+            self.main_window = MainWindow(username)
+            self.main_window.show()
+            self.close()
+        except ImportError:
+            QMessageBox.information(self, "Success", f"Logged in as {username}")
+            self.ui.lineEdit.clear()
+            self.ui.lineEdit_2.clear()
+            self.ui.lineEdit.setFocus()
+
+def main():
+    app = QApplication(sys.argv)
+    
+    
+    app.setStyleSheet("""
+        QMessageBox {
+            background-color: #2a2a2a;
+        }
+        QMessageBox QLabel {
+            color: #ffffff;
+        }
+    """)
+    
+    window = LoginWindow()
+    window.show()
+    sys.exit(app.exec())
+
+if __name__ == "__main__":  
+    main()
