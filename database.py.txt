@@ -1,0 +1,104 @@
+import sqlite3
+import hashlib
+from PyQt5.QtWidgets import QMessageBox
+
+class DatabaseManager:
+    """Handles all database operations with a normalized schema."""
+    def __init__(self, db_name='login_system.db'):
+        self.db_name = db_name
+        self.conn = None
+        self.connect()
+        self.create_tables()
+
+    def connect(self):
+        try:
+            self.conn = sqlite3.connect(self.db_name)
+            self.conn.row_factory = sqlite3.Row  # access columns by name
+        except sqlite3.Error as e:
+            QMessageBox.critical(None, "Database Error", f"Failed to connect: {e}")
+
+    def create_tables(self):
+        with self.conn:
+            # Roles table
+            self.conn.execute('''
+                CREATE TABLE IF NOT EXISTS roles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    role_name TEXT UNIQUE NOT NULL
+                )
+            ''')
+            # Users table (normalized)
+            self.conn.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    role_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (role_id) REFERENCES roles (id)
+                )
+            ''')
+            # Insert default roles if missing
+            self.conn.execute("INSERT OR IGNORE INTO roles (role_name) VALUES ('admin'), ('user')")
+
+    def execute_query(self, query, params=()):
+        try:
+            with self.conn:
+                cursor = self.conn.execute(query, params)
+                return cursor.lastrowid
+        except sqlite3.Error as e:
+            QMessageBox.critical(None, "Database Error", str(e))
+            return None
+
+    def fetch_one(self, query, params=()):
+        cursor = self.conn.execute(query, params)
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def fetch_all(self, query, params=()):
+        cursor = self.conn.execute(query, params)
+        # Loop through cursor to build list of dictionaries
+        return [dict(row) for row in cursor.fetchall()]
+
+    def authenticate_user(self, username, password):
+        """Check credentials using a JOIN to get role name."""
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        query = '''
+            SELECT u.id, u.username, u.email, r.role_name
+            FROM users u
+            JOIN roles r ON u.role_id = r.id
+            WHERE u.username = ? AND u.password_hash = ?
+        '''
+        return self.fetch_one(query, (username, password_hash))
+
+    def register_user(self, username, password, email, role_name='user'):
+        """Register a new user."""
+        # Check if username already exists (conditional)
+        existing = self.fetch_one("SELECT id FROM users WHERE username = ?", (username,))
+        if existing:
+            return False, "Username already exists."
+
+        # Get role_id (JOIN not needed here, simple lookup)
+        role = self.fetch_one("SELECT id FROM roles WHERE role_name = ?", (role_name,))
+        if not role:
+            return False, "Invalid role."
+
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        query = '''
+            INSERT INTO users (username, password_hash, email, role_id)
+            VALUES (?, ?, ?, ?)
+        '''
+        last_id = self.execute_query(query, (username, password_hash, email, role['id']))
+        if last_id:
+            return True, "Registration successful. You can now log in."
+        return False, "Registration failed."
+
+    def reset_password(self, username, new_password):
+        """Reset password for a given username."""
+        user = self.fetch_one("SELECT id FROM users WHERE username = ?", (username,))
+        if not user:
+            return False, "Username not found."
+        password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+        query = "UPDATE users SET password_hash = ? WHERE id = ?"
+        self.execute_query(query, (password_hash, user['id']))
+        return True, "Password updated successfully."

@@ -1,0 +1,157 @@
+import sys
+from PyQt5 import uic
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton
+from PyQt5.QtCore import Qt
+import database as db
+
+class RegisterDialog(QDialog):
+    def __init__(self, db_manager, parent=None):
+        super().__init__(parent)
+        self.db_manager = db_manager
+        self.setWindowTitle("Sign Up")
+        self.setFixedSize(350, 250)
+        self.setModal(True)
+
+        layout = QVBoxLayout()
+        self.username_edit = QLineEdit()
+        self.username_edit.setPlaceholderText("Username")
+        layout.addWidget(QLabel("Username:"))
+        layout.addWidget(self.username_edit)
+
+        self.email_edit = QLineEdit()
+        self.email_edit.setPlaceholderText("Email")
+        layout.addWidget(QLabel("Email:"))
+        layout.addWidget(self.email_edit)
+
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setPlaceholderText("Password")
+        layout.addWidget(QLabel("Password:"))
+        layout.addWidget(self.password_edit)
+
+        self.confirm_edit = QLineEdit()
+        self.confirm_edit.setEchoMode(QLineEdit.Password)
+        self.confirm_edit.setPlaceholderText("Confirm Password")
+        layout.addWidget(QLabel("Confirm Password:"))
+        layout.addWidget(self.confirm_edit)
+
+        btn_register = QPushButton("Register")
+        btn_register.clicked.connect(self.on_register)
+        layout.addWidget(btn_register)
+
+        self.setLayout(layout)
+
+    def on_register(self):
+        username = self.username_edit.text().strip()
+        email = self.email_edit.text().strip()
+        password = self.password_edit.text()
+        confirm = self.confirm_edit.text()
+
+        
+        if not username or not email or not password:
+            QMessageBox.warning(self, "Error", "All fields are required.")
+            return
+        if password != confirm:
+            QMessageBox.warning(self, "Error", "Passwords do not match.")
+            return
+
+        success, msg = self.db_manager.register_user(username, password, email)
+        if success:
+            QMessageBox.information(self, "Success", msg)
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error", msg)
+
+
+class ForgotPasswordDialog(QDialog):
+    def __init__(self, db_manager, parent=None):
+        super().__init__(parent)
+        self.db_manager = db_manager
+        self.setWindowTitle("Reset Password")
+        self.setFixedSize(300, 150)
+        self.setModal(True)
+
+        layout = QVBoxLayout()
+        self.username_edit = QLineEdit()
+        self.username_edit.setPlaceholderText("Username")
+        layout.addWidget(QLabel("Enter your username:"))
+        layout.addWidget(self.username_edit)
+
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setPlaceholderText("New Password")
+        layout.addWidget(QLabel("New Password:"))
+        layout.addWidget(self.password_edit)
+
+        btn_reset = QPushButton("Reset Password")
+        btn_reset.clicked.connect(self.on_reset)
+        layout.addWidget(btn_reset)
+
+        self.setLayout(layout)
+
+    def on_reset(self):
+        username = self.username_edit.text().strip()
+        new_password = self.password_edit.text()
+
+        if not username or not new_password:
+            QMessageBox.warning(self, "Error", "Both fields are required.")
+            return
+
+        success, msg = self.db_manager.reset_password(username, new_password)
+        if success:
+            QMessageBox.information(self, "Success", msg)
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error", msg)
+
+
+class LoginWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        uic.loadUi("login.ui", self)
+
+       
+        self.db = db.DatabaseManager()
+
+    
+        self.pushButton.clicked.connect(self.on_login)
+        self.label_7.mousePressEvent = self.on_signup_clicked   # Sign Up label
+        self.label_6.mousePressEvent = self.on_forgot_clicked   # Forgot Password label
+
+       
+    def on_login(self):
+        """Handle login button click."""
+        username = self.lineEdit.text().strip()
+        password = self.lineEdit_2.text()
+
+       
+        if not username or not password:
+            QMessageBox.warning(self, "Error", "Please enter username and password.")
+            return
+
+        
+        user = self.db.authenticate_user(username, password)
+        if user:
+            QMessageBox.information(self, "Success",
+                                    f"Welcome {user['username']}!\nRole: {user['role_name']}")
+            
+            self.close()
+        else:
+            QMessageBox.critical(self, "Error", "Invalid username or password.")
+
+    def on_signup_clicked(self, event):
+        """Open registration dialog."""
+        dialog = RegisterDialog(self.db, self)
+        dialog.exec_()
+
+    def on_forgot_clicked(self, event):
+        """Open password reset dialog."""
+        dialog = ForgotPasswordDialog(self.db, self)
+        dialog.exec_()
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = LoginWindow()
+    window.show()
+    sys.exit(app.exec_())
